@@ -1,0 +1,14 @@
+[17-Jul-2020 19:08:18 UTC] PHP Warning:  require_once(../../include/DbHandler.php): failed to open stream: No such file or directory in /home/olamsyst/public_html/api_presentation/jobNotification/jobNotification.php on line 18
+[17-Jul-2020 19:08:18 UTC] PHP Fatal error:  require_once(): Failed opening required '../../include/DbHandler.php' (include_path='.:/opt/alt/php71/usr/share/pear') in /home/olamsyst/public_html/api_presentation/jobNotification/jobNotification.php on line 18
+[17-Jul-2020 19:08:38 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function echoResponse() in /home/olamsyst/public_html/api_presentation/jobNotification/jobNotification.php:49
+Stack trace:
+#0 [internal function]: {closure}()
+#1 /home/olamsyst/public_html/api_presentation/libs/Slim/Route.php(468): call_user_func_array(Object(Closure), Array)
+#2 /home/olamsyst/public_html/api_presentation/libs/Slim/Slim.php(1357): Slim\Route->dispatch()
+#3 /home/olamsyst/public_html/api_presentation/libs/Slim/Middleware/Flash.php(85): Slim\Slim->call()
+#4 /home/olamsyst/public_html/api_presentation/libs/Slim/Middleware/MethodOverride.php(92): Slim\Middleware\Flash->call()
+#5 /home/olamsyst/public_html/api_presentation/libs/Slim/Middleware/PrettyExceptions.php(67): Slim\Middleware\MethodOverride->call()
+#6 /home/olamsyst/public_html/api_presentation/libs/Slim/Slim.php(1302): Slim\Middleware\PrettyExceptions->call()
+#7 /home/olamsyst/public_html/api_presentation/jobNotification/jobNotification.php(63): Slim\Slim->run()
+#8 {main}
+  thrown in /home/olamsyst/public_html/api_presentation/jobNotification/jobNotification.php on line 49
