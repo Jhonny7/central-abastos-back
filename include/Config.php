@@ -7,13 +7,19 @@ define('DB_PASSWORD', 'Temporal2020..');
 define('DB_HOST', '192.168.210.130');
 define('DB_NAME', 'abastos');
 define('DB_PORT', '3306');  
-*/
+
 define('DB_USERNAME', 'root');
 define('DB_PASSWORD', '');
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'abastos');
 define('DB_PORT', '3306');  
-
+*/
+ 
+define('DB_USERNAME', 'root');
+define('DB_PASSWORD', 'root');
+define('DB_HOST', 'localhost');
+define('DB_NAME', 'abastos');
+define('DB_PORT', '8889'); 
 //referencia generado con MD5(uniqueid(<some_string>, true))
 define('API_KEY','f13d3ac10e16ff056e086065216e53c1');//
 

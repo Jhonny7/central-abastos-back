@@ -1,4 +1,4 @@
-        <?php
+<?php
 
 ini_set('display_errors', '1');
 error_reporting(E_ALL);
@@ -1056,14 +1056,14 @@ $app->get('/proveedor-productos/:id', function ($id) use ($app) {
                 # code...
                 $rowsProductos[0] = convertKeysToCamelCase($rowsProductos[0]);
                 if ($rowsProductos[0]["productoId"]) {
-                    $rowsProductos[0]["producto"] = desgloceProducto($rowsProductos[0]["productoId"],$db);
+                    $rowsProductos[0]["producto"] = desgloceProducto($rowsProductos[0]["productoId"], $db);
                 }
 
                 if ($rowsProductos[0]["proveedorId"]) {
-                    $rowsProductos[0]["proveedor"] = desgloceProveedor($rowsProductos[0]["proveedorId"],$db);
+                    $rowsProductos[0]["proveedor"] = desgloceProveedor($rowsProductos[0]["proveedorId"], $db);
                 }
 
-                $rowsProductos[0]["imagenes"] = imagenesProvedorProducto($rowsProductos[0]["id"],$db);
+                $rowsProductos[0]["imagenes"] = imagenesProvedorProducto($rowsProductos[0]["id"], $db);
             }
             echoResponse(200, $rowsProductos[0]);
         } else {
@@ -1103,8 +1103,7 @@ $app->get('/proveedor-productos/producto/:id', function ($id) use ($app) {
     $rows = null;
     try {
 
-        echoResponse(200, desgloceProductoProveedorByProductoList($id,$db));
-        
+        echoResponse(200, desgloceProductoProveedorByProductoList($id, $db));
 
     } catch (Exception $e) {
 
@@ -1732,10 +1731,10 @@ $app->get('/carrito-compras-proveedor', function () use ($app) {
 
                 //Buscamos el objeto proveedor
 
-                $productoProveedor = desgloceProductoProveedor($carrito["productoProveedorId"],$db);
+                $productoProveedor = desgloceProductoProveedor($carrito["productoProveedorId"], $db);
                 $carrito["productoProveedor"] = $productoProveedor;
 
-                $proveedor = desgloceProveedorByProductoProveedor($carrito["productoProveedorId"],$db);
+                $proveedor = desgloceProveedorByProductoProveedor($carrito["productoProveedorId"], $db);
 
                 if (array_key_exists($productoProveedor["proveedorId"], $mapProveedores)) {
 
@@ -1749,7 +1748,7 @@ $app->get('/carrito-compras-proveedor', function () use ($app) {
                     $tmp = array();
                     $tmp["listCarrito"] = [];
                     $tmp["comisionTransporte"] = 0;
-                    $tmp["proveedor"] = desgloceProveedor($proveedor["id"],$db);
+                    $tmp["proveedor"] = desgloceProveedor($proveedor["id"], $db);
                     $tmp["tiempoEntrega"] = 0;
                     $tmp["total"] = floatval($multiplicacion);
                     $tmp["totalProductos"] = floatval($multiplicacion);
@@ -1804,7 +1803,7 @@ $app->put('/carrito-compras', function () use ($app) {
 
     $body = $app->request->getBody();
     $data = json_decode($body, true);
-
+    $debugger = 1;
     try {
         $email = $data['email'];
         $cantidad = $data['cantidad'];
@@ -1820,21 +1819,23 @@ $app->put('/carrito-compras', function () use ($app) {
         $query = "UPDATE carrito_compra SET cantidad = ? WHERE cliente_id = (SELECT id FROM jhi_user WHERE email = ?)
                 AND producto_proveedor_id = ?";
         $sth = $db->prepare($query);
-        $sth->bindParam(1, $cantidad, PDO::PARAM_STR);
+        $sth->bindParam(1, $cantidad, PDO::PARAM_INT);
         $sth->bindParam(2, $email, PDO::PARAM_STR);
-        $sth->bindParam(3, $productoProveedorId, PDO::PARAM_STR);
+        $sth->bindParam(3, $productoProveedorId, PDO::PARAM_INT);
         $sth->execute();
         $db->commit();
-
-        $query = "SELECT * FROM carrito_compra WHERE cliente_id = (SELECT id FROM jhi_user WHERE email = ?)
+        $debugger = 2;
+        $query2 = "SELECT * FROM carrito_compra WHERE cliente_id = (SELECT id FROM jhi_user WHERE email = ?)
                 AND producto_proveedor_id = ?";
-        $sth = $db->prepare($query);
-        $sth->bindParam(1, $email, PDO::PARAM_STR);
-        $sth->bindParam(2, $productoProveedorId, PDO::PARAM_STR);
-        $sth->execute();
-        $rows = $sth->fetchAll(PDO::FETCH_ASSOC);
+        $sth2 = $db->prepare($query2);
+        $sth2->bindParam(1, $email, PDO::PARAM_STR);
+        $sth2->bindParam(2, $productoProveedorId, PDO::PARAM_INT);
+        $sth2->execute();
+
+        $debugger = 3;
+        $rows = $sth2->fetchAll(PDO::FETCH_ASSOC);
         $rows[0] = convertKeysToCamelCase($rows[0]);
-        $productoProveedor = desgloceProductoProveedor($carrito["productoProveedorId"],$db);
+        $productoProveedor = desgloceProductoProveedor($rows[0]["productoProveedorId"], $db);
         $rows[0]["productoProveedor"] = $productoProveedor;
         echoResponse(200, $rows[0]);
     } catch (Exception $e) {
@@ -1860,6 +1861,7 @@ $app->post('/carrito-compras', function () use ($app) {
     $body = $app->request->getBody();
     $data = json_decode($body, true);
     $opc = 0;
+    $stepDebug = 0;
     try {
         $email = $data['email'];
         $cantidad = $data['cantidad'];
@@ -1874,16 +1876,18 @@ $app->post('/carrito-compras', function () use ($app) {
         $sthBusqueda->bindParam(2, $productoProveedorId, PDO::PARAM_INT);
         $sthBusqueda->execute();
         $rowsBusqueda = $sthBusqueda->fetchAll(PDO::FETCH_ASSOC);
-
-        if($rowsBusqueda && $rowsBusqueda[0]){
+        $stepDebug = 1;
+        if ($rowsBusqueda && sizeof($rowsBusqueda) > 0) {
+            $stepDebug = 2;
             $response["status"] = false;
             $response["description"] = "Ya existe este producto en el carrito";
             $response["idTransaction"] = time();
             $response["parameters"] = $rowsBusqueda;
             $response["timeRequest"] = date("Y-m-d H:i:s");
 
-            echoResponse(380, $response);
-        } else{
+            echoResponse(200, $response);
+        } else {
+            $stepDebug = 3;
             $opc = 1;
             //$query = "UPDATE carrito_compra SET cantidad = ? WHERE cliente_id = (SELECT id FROM jhi_user WHERE email = ?)
             //AND producto_proveedor_id = ?";
@@ -1894,27 +1898,79 @@ $app->post('/carrito-compras', function () use ($app) {
             $sth->bindParam(2, $productoProveedorId, PDO::PARAM_INT);
             $sth->bindParam(3, $cantidad, PDO::PARAM_INT);
             $sth->bindParam(4, $precio, PDO::PARAM_STR);
-            
-            $sth->execute();
-            $db->commit();
 
-            $query = "SELECT * FROM carrito_compra WHERE cliente_id = (SELECT id FROM jhi_user WHERE email = ?)
-                    AND producto_proveedor_id = ?";
+            $sth->execute();
+
+            /* $query = "SELECT * FROM carrito_compra WHERE cliente_id = (SELECT id FROM jhi_user WHERE email = ?)
+            AND producto_proveedor_id = ?";
             $sth = $db->prepare($query);
             $sth->bindParam(1, $email, PDO::PARAM_STR);
-            $sth->bindParam(2, $productoProveedorId, PDO::PARAM_STR);
+            $sth->bindParam(2, $productoProveedorId, PDO::PARAM_INT);
             $sth->execute();
             $rows = $sth->fetchAll(PDO::FETCH_ASSOC);
+            $stepDebug = 4;
             $rows[0] = convertKeysToCamelCase($rows[0]);
             $productoProveedor = desgloceProductoProveedor($carrito["productoProveedorId"],$db);
-            $rows[0]["productoProveedor"] = $productoProveedor;
-            echoResponse(200, $rows[0]);
+            $rows[0]["productoProveedor"] = $productoProveedor; */
+
+            //SUBREQUEST
+            //    $this->subRequest('GET', '/hello')
+            echoResponse(200, []);
         }
 
+        $db->commit();
+
     } catch (Exception $e) {
-        if($opc == 1){
+        if ($opc == 1) {
             $db->rollBack();
         }
+        $response["status"] = false;
+        $response["description"] = $e->getMessage();
+        $response["idTransaction"] = time();
+        $response["parameters"] = $stepDebug;
+        $response["timeRequest"] = date("Y-m-d H:i:s");
+
+        echoResponse(400, $response);
+    }
+
+});
+
+$app->get('/carrito-compras', function () use ($app) {
+
+    $response = array();
+    $dbHandler = new DbHandler();
+    $db = $dbHandler->getConnection();
+    $db->beginTransaction();
+
+    $body = $app->request->getBody();
+    $data = json_decode($body, true);
+
+    try {
+
+        $email = $app->request()->params('email');
+
+        $query = "SELECT cc.* FROM carrito_compra cc
+                            INNER JOIN producto_proveedor pr
+                            ON (cc.producto_proveedor_id = pr.id)
+                            WHERE cliente_id = (SELECT id FROM jhi_user WHERE email = ?)
+                            ORDER BY pr.proveedor_id ASC, cc.id";
+        $sth = $db->prepare($query);
+        $sth->bindParam(1, $email, PDO::PARAM_STR);
+        $sth->execute();
+        $rows = $sth->fetchAll(PDO::FETCH_ASSOC);
+
+        if ($rows) {
+            for ($i = 0; $i < sizeof($rows); $i++) {
+                $rows[$i] = convertKeysToCamelCase($rows[$i]);
+                if ($rows[$i]["productoProveedorId"]) {
+                    $rows[$i]["productoProveedor"] = desgloceProductoProveedor($rows[$i]["productoProveedorId"], $db);
+                }
+            }
+        }
+
+        echoResponse(200, $rows);
+    } catch (Exception $e) {
+        $db->rollBack();
         $response["status"] = false;
         $response["description"] = $e->getMessage();
         $response["idTransaction"] = time();
@@ -1958,7 +2014,7 @@ $app->post('/carrito-historicos', function () use ($app) {
         $queryInsert = "INSERT INTO carrito_historico (nombre, cliente_id, fecha_alta) VALUES (?, ?, now())";
         $sthInsert = $db->prepare($queryInsert);
         $sthInsert->bindParam(1, $nombre, PDO::PARAM_STR);
-        $sthInsert->bindParam(2, $rows[0]["client_id"], PDO::PARAM_INT);
+        $sthInsert->bindParam(2, $rows[0]["cliente_id"], PDO::PARAM_INT);
         $sthInsert->execute();
         $idCarritoHistorico = $db->lastInsertId();
 
@@ -1990,6 +2046,64 @@ $app->post('/carrito-historicos', function () use ($app) {
 
 });
 
+$app->get('/carrito-historicos', function () use ($app) {
+
+    $response = array();
+    $dbHandler = new DbHandler();
+    $db = $dbHandler->getConnection();
+    $db->beginTransaction();
+
+    $body = $app->request->getBody();
+    $data = json_decode($body, true);
+
+    try {
+
+        $email = $app->request()->params('email');
+
+        $query = "SELECT * FROM carrito_historico WHERE cliente_id = (SELECT id FROM jhi_user WHERE email = ?)";
+        $sth = $db->prepare($query);
+        $sth->bindParam(1, $email, PDO::PARAM_STR);
+        $sth->execute();
+        $rows = $sth->fetchAll(PDO::FETCH_ASSOC);
+        $carritosHistoricos = array();
+        if ($rows) {
+            for ($i = 0; $i < sizeof($rows); $i++) {
+                $tmpHistorico = convertKeysToCamelCase($rows[$i]);
+
+                $queryDetalle = "SELECT * FROM carrito_historico_detalle WHERE carrito_historico_id = ?";
+                $sthDetalle = $db->prepare($queryDetalle);
+                $sthDetalle->bindParam(1, $tmpHistorico["id"], PDO::PARAM_STR);
+                $sthDetalle->execute();
+                $rowsDetalle = $sthDetalle->fetchAll(PDO::FETCH_ASSOC);
+
+                $detalles = array();
+                foreach ($rowsDetalle as $key => $detalle) {
+                    $tmpDetalle = convertKeysToCamelCase($detalle);
+                    $tmpDetalle["productoProveedor"] = null;
+                    if ($tmpDetalle["productoProveedorId"]) {
+                        $tmpDetalle["productoProveedor"] = desgloceProductoProveedor($tmpDetalle["productoProveedorId"], $db);
+                    }
+                    array_push($detalles, $tmpDetalle);
+                }
+                $tmpHistorico["carritoHistoricoDetalles"] = $detalles;
+                array_push($carritosHistoricos, $tmpHistorico);
+            }
+        }
+
+        echoResponse(200, $carritosHistoricos);
+    } catch (Exception $e) {
+        $db->rollBack();
+        $response["status"] = false;
+        $response["description"] = $e->getMessage();
+        $response["idTransaction"] = time();
+        $response["parameters"] = $e->getMessage();
+        $response["timeRequest"] = date("Y-m-d H:i:s");
+
+        echoResponse(400, $response);
+    }
+
+});
+
 $app->get('/tipo-direcciones', function () use ($app) {
     $response = array();
     $dbHandler = new DbHandler();
@@ -2004,6 +2118,44 @@ $app->get('/tipo-direcciones', function () use ($app) {
         $rows = $sth->fetchAll(PDO::FETCH_ASSOC);
 
         echoResponse(200, $rows);
+    } catch (Exception $e) {
+
+        $response["status"] = false;
+        $response["description"] = "GENERIC-ERROR";
+        $response["idTransaction"] = time();
+        $response["parameters"] = $e->getMessage();
+        $response["parameters2"] = $rows;
+        $response["timeRequest"] = date("Y-m-d H:i:s");
+
+        echoResponse(400, $response);
+    }
+});
+
+$app->get('/tarjetas-all', function () use ($app) {
+    $response = array();
+    $dbHandler = new DbHandler();
+    $db = $dbHandler->getConnection();
+    $db->beginTransaction();
+
+    $body = $app->request->getBody();
+    $data = json_decode($body, true);
+    $rows = null;
+
+    try {
+        $email = $app->request()->params('email');
+        $query = "SELECT * FROM usuario_tarjeta WHERE usuario_id = (SELECT id FROM jhi_user WHERE email = ?)";
+        $sth = $db->prepare($query);
+        $sth->bindParam(1, $email, PDO::PARAM_STR);
+        $sth->execute();
+        $rows = $sth->fetchAll(PDO::FETCH_ASSOC);
+
+        $tarjetas = array();
+        foreach ($rows as $key => $tarjeta) {
+            # code...
+            $tmp = convertKeysToCamelCase($tarjeta);
+            array_push($tarjetas, $tmp);
+        }
+        echoResponse(200, $tarjetas);
     } catch (Exception $e) {
 
         $response["status"] = false;
@@ -2137,9 +2289,9 @@ $app->post('/pedidos', function () use ($app) {
             # code...
             $producto = $productos[$i];
 
-            $prodProdDTO = desgloceProductoProveedor(intval($producto["productoProveedorId"]),$db);
+            $prodProdDTO = desgloceProductoProveedor(intval($producto["productoProveedorId"]), $db);
 
-            $proveedorDTO = desgloceProveedorByProductoProveedor($producto["productoProveedorId"],$db);
+            $proveedorDTO = desgloceProveedorByProductoProveedor($producto["productoProveedorId"], $db);
             //array_push($p, $proveedorDTO);
             if (!array_key_exists($prodProdDTO["proveedorId"], $mapProveedores)) {
                 $mapProveedores[$prodProdDTO["proveedorId"]] = array();
@@ -2256,7 +2408,7 @@ $app->post('/pedidos', function () use ($app) {
             // El usuario recoge el pedido en dirección de proveedor
             if (!$picking || $picking == "false" || $picking == 0) {
                 $provTmp = $mapProveedores[$pedProv["proveedorId"]]["proveedor"];
-                $provTmp["direccion"] = desgloceDireccion($provTmp["direccionId"],$db);
+                $provTmp["direccion"] = desgloceDireccion($provTmp["direccionId"], $db);
                 //lat,lat,long,long
                 /*
 
@@ -2435,26 +2587,26 @@ $app->post('/pedidos', function () use ($app) {
             $rowsPedidos[0] = convertKeysToCamelCase($rowsPedidos[0]);
 
             if ($rowsPedidos[0]["clienteId"]) {
-                $rowsPedidos[0]["cliente"] = desgloceUsuario($rowsPedidos[0]["clienteId"],$db);
+                $rowsPedidos[0]["cliente"] = desgloceUsuario($rowsPedidos[0]["clienteId"], $db);
             }
             $debugger = 10;
             $debugger = $rowsPedidos[0];
             if ($rowsPedidos[0]["direccionContactoId"]) {
-                $rowsPedidos[0]["direccionContacto"] = desgloceDireccion($rowsPedidos[0]["direccionContactoId"],$db);
+                $rowsPedidos[0]["direccionContacto"] = desgloceDireccion($rowsPedidos[0]["direccionContactoId"], $db);
             }
             $debugger = 11;
             if ($rowsPedidos[0]["estatusId"]) {
-                $rowsPedidos[0]["estatus"] = desgloceEstatus($rowsPedidos[0]["estatusId"],$db);
+                $rowsPedidos[0]["estatus"] = desgloceEstatus($rowsPedidos[0]["estatusId"], $db);
             }
             $debugger = 12;
-            $rowsPedidos[0]["pedidoProveedores"] = desglocePedidoProveedores($idPedido,$db);
+            $rowsPedidos[0]["pedidoProveedores"] = desglocePedidoProveedores($idPedido, $db);
 
             $rowsPedidos[0]["distanciaKM"] = $pedProv["distanciaKM"];
             //$rowsPedidos[0]["pedidoProveedores2"] = desglocePedidoProveedores($idPedido);
             //$rowsPedidos[0]["pedidoProveedores"]["pedidoDetalles"] = array();
             for ($h = 0; $h < sizeof($rowsPedidos[0]["pedidoProveedores"]); $h++) {
                 # code...
-                $rowsPedidos[0]["pedidoProveedores"][$h]["pedidoDetalles"] = desglocePedidoDetallesPlural($rowsPedidos[0]["pedidoProveedores"][$h]["id"],$db);
+                $rowsPedidos[0]["pedidoProveedores"][$h]["pedidoDetalles"] = desglocePedidoDetallesPlural($rowsPedidos[0]["pedidoProveedores"][$h]["id"], $db);
 
                 //Evaluar si la distancia es mucho mayor que la parametrizada
                 if ($limiteParams < $rowsPedidos[0]["pedidoProveedores"][$h]["distanciaEntregaKm"]) {
@@ -2515,7 +2667,7 @@ $app->get('/pedidos', function () use ($app) {
         for ($i = 0; $i < sizeof($rows); $i++) {
             $rows[$i] = convertKeysToCamelCase($rows[$i]);
             if ($rows[$i]["id"]) {
-                $rows[$i] = desglocePedido($rows[$i]["id"],$db);
+                $rows[$i] = desglocePedido($rows[$i]["id"], $db);
             }
         }
 
@@ -2544,60 +2696,13 @@ $app->get('/pedidos/:id', function ($idPedido) use ($app) {
     $data = json_decode($body, true);
     try {
 
-        echoResponse(200, desglocePedido($idPedido,$db));
+        echoResponse(200, desglocePedido($idPedido, $db));
     } catch (Exception $e) {
         $db->rollBack();
         $response["status"] = false;
         $response["description"] = $e->getMessage();
         $response["idTransaction"] = time();
         $response["parameters"] = [];
-        $response["timeRequest"] = date("Y-m-d H:i:s");
-
-        echoResponse(400, $response);
-    }
-
-});
-
-$app->get('/carrito-compras', function () use ($app) {
-
-    $response = array();
-    $dbHandler = new DbHandler();
-    $db = $dbHandler->getConnection();
-    $db->beginTransaction();
-
-    $body = $app->request->getBody();
-    $data = json_decode($body, true);
-
-    try {
-
-        $email = $app->request()->params('email');
-
-        $query = "SELECT cc.* FROM carrito_compra cc
-                            INNER JOIN producto_proveedor pr
-                            ON (cc.producto_proveedor_id = pr.id)
-                            WHERE cliente_id = (SELECT id FROM jhi_user WHERE email = ?)
-                            ORDER BY pr.proveedor_id ASC, cc.id";
-        $sth = $db->prepare($query);
-        $sth->bindParam(1, $email, PDO::PARAM_STR);
-        $sth->execute();
-        $rows = $sth->fetchAll(PDO::FETCH_ASSOC);
-
-        if ($rows) {
-            for ($i = 0; $i < sizeof($rows); $i++) {
-                $rows[$i] = convertKeysToCamelCase($rows[$i]);
-                if ($rows[$i]["productoProveedorId"]) {
-                    $rows[$i]["productoProveedor"] = desgloceProductoProveedor($rows[$i]["productoProveedorId"],$db);
-                }
-            }
-        }
-
-        echoResponse(200, $rows);
-    } catch (Exception $e) {
-        $db->rollBack();
-        $response["status"] = false;
-        $response["description"] = $e->getMessage();
-        $response["idTransaction"] = time();
-        $response["parameters"] = $e->getMessage();
         $response["timeRequest"] = date("Y-m-d H:i:s");
 
         echoResponse(400, $response);
@@ -2623,7 +2728,7 @@ $app->put('/pedidos/pago', function () use ($app) {
 
         $fcmMessaje = $data['fcmMessage'];
 
-        $pedido = desglocePedido($pedidoId,$db);
+        $pedido = desglocePedido($pedidoId, $db);
 
         $cardDetails = array();
         $cardDetails["email"] = $emailStripe;
@@ -2693,7 +2798,7 @@ $app->put('/pedidos/pago', function () use ($app) {
 
             for ($i = 0; $i < sizeof($rowsPedidoProveedores); $i++) {
                 $idTmp = $rowsPedidoProveedores[$i]["id"];
-                $pedidoProv = desglocePedidoProveedor($rowsPedidoProveedores[$i]["id"],$db);
+                $pedidoProv = desglocePedidoProveedor($rowsPedidoProveedores[$i]["id"], $db);
                 $kmProveedor = floatval($rowsPedidoProveedores[$i]["distancia_entrega_km"]);
                 # code...
                 $queryUpdatePedidoProveedor = "UPDATE pedido_proveedor SET estatus_id = ?, usuario_modificacion_id = ?, fecha_modificacion = now() WHERE id = ?";
@@ -2765,7 +2870,7 @@ $app->put('/pedidos/pago', function () use ($app) {
 
             $db->commit();
 
-            $pedidoReturn = desglocePedido($pedidoId,$db);
+            $pedidoReturn = desglocePedido($pedidoId, $db);
 
             echoResponse(200, $pedidoReturn);
         } else {
@@ -2819,7 +2924,7 @@ $app->get('/tarjetas', function () use ($app) {
             for ($i = 0; $i < sizeof($rows); $i++) {
                 $rows[$i] = convertKeysToCamelCase($rows[$i]);
                 if ($rows[$i]["productoProveedorId"]) {
-                    $rows[$i]["productoProveedor"] = desgloceProductoProveedor($rows[$i]["productoProveedorId"],$db);
+                    $rows[$i]["productoProveedor"] = desgloceProductoProveedor($rows[$i]["productoProveedorId"], $db);
                 }
             }
         }
@@ -2849,7 +2954,7 @@ $app->get('/desgloce/:id', function ($id) use ($app) {
         $response["status"] = true;
         $response["description"] = "SUCCESSFUL";
         $response["idTransaction"] = time();
-        $response["parameters"] = desgloceProductoProveedor($id,$db);
+        $response["parameters"] = desgloceProductoProveedor($id, $db);
         $response["timeRequest"] = date("Y-m-d H:i:s");
 
         echoResponse(200, $response);
@@ -3201,7 +3306,7 @@ function desgloceProveedor($id, $db)
     }
 
     if ($rowsProveedor[0]["direccionId"]) {
-        $rowsProveedor[0]["direccion"] = desgloceDireccion($rowsProveedor[0]["direccionId"],$db);
+        $rowsProveedor[0]["direccion"] = desgloceDireccion($rowsProveedor[0]["direccionId"], $db);
     }
 
     return $rowsProveedor[0];
@@ -3504,15 +3609,15 @@ function desgloceProductoProveedor($id, $db)
         # code...
         $rowsProductos[0] = convertKeysToCamelCase($rowsProductos[0]);
         if ($rowsProductos[0]["productoId"]) {
-            $rowsProductos[0]["producto"] = desgloceProducto($rowsProductos[0]["productoId"],$db);
+            $rowsProductos[0]["producto"] = desgloceProducto($rowsProductos[0]["productoId"], $db);
         }
 
         if ($rowsProductos[0]["proveedorId"]) {
-            $rowsProductos[0]["proveedor"] = desgloceProveedor($rowsProductos[0]["proveedorId"],$db);
+            $rowsProductos[0]["proveedor"] = desgloceProveedor($rowsProductos[0]["proveedorId"], $db);
         }
 
         if ($rowsProductos[0]["estatusId"]) {
-            $rowsProductos[0]["estatus"] = desgloceEstatus($rowsProductos[0]["estatusId"],$db);
+            $rowsProductos[0]["estatus"] = desgloceEstatus($rowsProductos[0]["estatusId"], $db);
         }
 
     }
@@ -3539,20 +3644,19 @@ function desgloceProductoProveedorByProductoList($id, $db)
         foreach ($rowsProductos as $key => $productoProveedor) {
             $productoProveedor = convertKeysToCamelCase($productoProveedor);
             if ($productoProveedor["productoId"]) {
-                $productoProveedor["producto"] = desgloceProducto($productoProveedor["productoId"],$db);
+                $productoProveedor["producto"] = desgloceProducto($productoProveedor["productoId"], $db);
             }
 
             if ($productoProveedor["proveedorId"]) {
-                $productoProveedor["proveedor"] = desgloceProveedor($productoProveedor["proveedorId"],$db);
+                $productoProveedor["proveedor"] = desgloceProveedor($productoProveedor["proveedorId"], $db);
             }
 
             if ($productoProveedor["estatusId"]) {
-                $productoProveedor["estatus"] = desgloceEstatus($productoProveedor["estatusId"],$db);
+                $productoProveedor["estatus"] = desgloceEstatus($productoProveedor["estatusId"], $db);
             }
 
-            array_push($arrayProductoProveedor,$productoProveedor);
+            array_push($arrayProductoProveedor, $productoProveedor);
         }
-        
 
     }
     return $arrayProductoProveedor;
@@ -3570,13 +3674,13 @@ function desglocePedido($id, $db)
     if ($rowsPedidos && $rowsPedidos[0]) {
         $rowsPedidos[0] = convertKeysToCamelCase($rowsPedidos[0]);
         if ($rowsPedidos[0]["clienteId"]) {
-            $rowsPedidos[0]["cliente"] = desgloceUsuario($rowsPedidos[0]["clienteId"],$db);
+            $rowsPedidos[0]["cliente"] = desgloceUsuario($rowsPedidos[0]["clienteId"], $db);
         }
         if ($rowsPedidos[0]["direccionContactoId"]) {
-            $rowsPedidos[0]["direccionContacto"] = desgloceDireccion($rowsPedidos[0]["direccionContactoId"],$db);
+            $rowsPedidos[0]["direccionContacto"] = desgloceDireccion($rowsPedidos[0]["direccionContactoId"], $db);
         }
         if ($rowsPedidos[0]["estatusId"]) {
-            $rowsPedidos[0]["estatus"] = desgloceEstatus($rowsPedidos[0]["estatusId"],$db);
+            $rowsPedidos[0]["estatus"] = desgloceEstatus($rowsPedidos[0]["estatusId"], $db);
         }
 
         //$rowsPedidos[0]["pedidoProveedores"] = desglocePedidoProveedores($rowsPedidos[0]["id"]);
@@ -3596,13 +3700,13 @@ function desglocePedidoWithProveedores($id, $db)
     if ($rowsPedidos && $rowsPedidos[0]) {
         $rowsPedidos[0] = convertKeysToCamelCase($rowsPedidos[0]);
         if ($rowsPedidos[0]["clienteId"]) {
-            $rowsPedidos[0]["cliente"] = desgloceUsuario($rowsPedidos[0]["clienteId"],$db);
+            $rowsPedidos[0]["cliente"] = desgloceUsuario($rowsPedidos[0]["clienteId"], $db);
         }
         if ($rowsPedidos[0]["direccionContactoId"]) {
-            $rowsPedidos[0]["direccionContacto"] = desgloceDireccion($rowsPedidos[0]["direccionContactoId"],$db);
+            $rowsPedidos[0]["direccionContacto"] = desgloceDireccion($rowsPedidos[0]["direccionContactoId"], $db);
         }
         if ($rowsPedidos[0]["estatusId"]) {
-            $rowsPedidos[0]["estatus"] = desgloceEstatus($rowsPedidos[0]["estatusId"],$db);
+            $rowsPedidos[0]["estatus"] = desgloceEstatus($rowsPedidos[0]["estatusId"], $db);
         }
 
         //$rowsPedidos[0]["pedidoProveedores"] = desglocePedidoProveedores($rowsPedidos[0]["id"]);
@@ -3618,15 +3722,15 @@ function desglocePedidoWithProveedores($id, $db)
             for ($i = 0; $i < sizeof($rowsProductos); $i++) {
                 $rowsProductos[$i] = convertKeysToCamelCase($rowsProductos[$i]);
                 if ($rowsProductos[$i]["proveedorId"]) {
-                    $rowsProductos[$i]["proveedor"] = desgloceProveedor($rowsProductos[$i]["proveedorId"],$db);
+                    $rowsProductos[$i]["proveedor"] = desgloceProveedor($rowsProductos[$i]["proveedorId"], $db);
                 }
 
                 if ($rowsProductos[$i]["estatusId"]) {
-                    $rowsProductos[$i]["estatus"] = desgloceEstatus($rowsProductos[$i]["estatusId"],$db);
+                    $rowsProductos[$i]["estatus"] = desgloceEstatus($rowsProductos[$i]["estatusId"], $db);
                 }
 
                 if ($rowsProductos[$i]["pedidoId"]) {
-                    $rowsProductos[$i]["pedido"] = desglocePedido($rowsProductos[$i]["pedidoId"],$db);
+                    $rowsProductos[$i]["pedido"] = desglocePedido($rowsProductos[$i]["pedidoId"], $db);
                 }
             }
 
@@ -3649,15 +3753,15 @@ function desglocePedidoProveedor($idPedido, $db)
         # code...
         $rowsProductos[0] = convertKeysToCamelCase($rowsProductos[0]);
         if ($rowsProductos[0]["proveedorId"]) {
-            $rowsProductos[0]["proveedor"] = desgloceProveedor($rowsProductos[0]["proveedorId"],$db);
+            $rowsProductos[0]["proveedor"] = desgloceProveedor($rowsProductos[0]["proveedorId"], $db);
         }
 
         if ($rowsProductos[0]["estatusId"]) {
-            $rowsProductos[0]["estatus"] = desgloceEstatus($rowsProductos[0]["estatusId"],$db);
+            $rowsProductos[0]["estatus"] = desgloceEstatus($rowsProductos[0]["estatusId"], $db);
         }
 
         if ($rowsProductos[0]["pedidoId"]) {
-            $rowsProductos[0]["pedido"] = desglocePedido($rowsProductos[0]["pedidoId"],$db);
+            $rowsProductos[0]["pedido"] = desglocePedido($rowsProductos[0]["pedidoId"], $db);
 
             $queryPedidoProveedores2 = "SELECT * FROM pedido_detalle WHERE pedido_proveedor_id = ?";
             $sthPedidoProveedores2 = $db->prepare($queryPedidoProveedores2);
@@ -3669,7 +3773,7 @@ function desglocePedidoProveedor($idPedido, $db)
                 $rowsPedidosDetalles["pedidoDetalles"] = [];
                 for ($i = 0; $i < sizeof($rowsPedidosDetalles); $i++) {
                     # code...
-                    array_push($rowsPedidosDetalles["pedidoDetalles"], desglocePedidoDetalle($rowsPedidosDetalles[$i]["id"],$db));
+                    array_push($rowsPedidosDetalles["pedidoDetalles"], desglocePedidoDetalle($rowsPedidosDetalles[$i]["id"], $db));
                 }
             }
         }
@@ -3692,15 +3796,15 @@ function desglocePedidoProveedores($idPedido, $db)
         for ($i = 0; $i < sizeof($rowsProductos); $i++) {
             $rowsProductos[$i] = convertKeysToCamelCase($rowsProductos[$i]);
             if ($rowsProductos[$i]["proveedorId"]) {
-                $rowsProductos[$i]["proveedor"] = desgloceProveedor($rowsProductos[$i]["proveedorId"],$db);
+                $rowsProductos[$i]["proveedor"] = desgloceProveedor($rowsProductos[$i]["proveedorId"], $db);
             }
 
             if ($rowsProductos[$i]["estatusId"]) {
-                $rowsProductos[$i]["estatus"] = desgloceEstatus($rowsProductos[$i]["estatusId"],$db);
+                $rowsProductos[$i]["estatus"] = desgloceEstatus($rowsProductos[$i]["estatusId"], $db);
             }
 
             if ($rowsProductos[$i]["pedidoId"]) {
-                $rowsProductos[$i]["pedido"] = desglocePedido($rowsProductos[$i]["pedidoId"],$db);
+                $rowsProductos[$i]["pedido"] = desglocePedido($rowsProductos[$i]["pedidoId"], $db);
             }
         }
     }
@@ -3720,11 +3824,11 @@ function desglocePedidoDetalle($id, $db)
         $rowsPedidos[0] = convertKeysToCamelCase($rowsPedidos[0]);
 
         if ($rowsPedidos[0]["estatusId"]) {
-            $rowsPedidos[0]["estatus"] = desgloceEstatus($rowsPedidos[0]["estatusId"],$db);
+            $rowsPedidos[0]["estatus"] = desgloceEstatus($rowsPedidos[0]["estatusId"], $db);
         }
 
         if ($rowsPedidos[0]["productoProveedorId"]) {
-            $rowsPedidos[0]["productoProveedor"] = desgloceProductoProveedor($rowsPedidos[0]["productoProveedorId"],$db);
+            $rowsPedidos[0]["productoProveedor"] = desgloceProductoProveedor($rowsPedidos[0]["productoProveedorId"], $db);
         }
 
     }
@@ -3764,12 +3868,12 @@ function desglocePedidoDetallesPlural($id, $db)
             $rowsPedidos[$i] = convertKeysToCamelCase($rowsPedidos[$i]);
 
             if ($rowsPedidos[$i]["estatusId"]) {
-                $rowsPedidos[$i]["estatus"] = desgloceEstatus($rowsPedidos[$i]["estatusId"],$db);
+                $rowsPedidos[$i]["estatus"] = desgloceEstatus($rowsPedidos[$i]["estatusId"], $db);
             }
 
             if ($rowsPedidos[$i]["productoProveedorId"]) {
-                $rowsPedidos[$i]["productoProveedor"] = desgloceProductoProveedor($rowsPedidos[$i]["productoProveedorId"],$db);
-                $rowsPedidos[$i]["inventario"] = desgloceInventarioByProductoProveedor($rowsPedidos[$i]["productoProveedorId"],$db);
+                $rowsPedidos[$i]["productoProveedor"] = desgloceProductoProveedor($rowsPedidos[$i]["productoProveedorId"], $db);
+                $rowsPedidos[$i]["inventario"] = desgloceInventarioByProductoProveedor($rowsPedidos[$i]["productoProveedorId"], $db);
             }
         }
 
