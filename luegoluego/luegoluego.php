@@ -2104,34 +2104,8 @@ $app->get('/carrito-historicos', function () use ($app) {
 
 });
 
-$app->get('/tipo-direcciones', function () use ($app) {
-    $response = array();
-    $dbHandler = new DbHandler();
-    $db = $dbHandler->getConnection();
-    $db->beginTransaction();
-    $rows = null;
-    try {
-        $query = "SELECT * FROM tipo_direccion";
-        $sth = $db->prepare($query);
-        $sth->bindParam(1, $email, PDO::PARAM_STR);
-        $sth->execute();
-        $rows = $sth->fetchAll(PDO::FETCH_ASSOC);
+$app->get('/carrito-historicos-proveedores/:id', function ($id) use ($app) {
 
-        echoResponse(200, $rows);
-    } catch (Exception $e) {
-
-        $response["status"] = false;
-        $response["description"] = "GENERIC-ERROR";
-        $response["idTransaction"] = time();
-        $response["parameters"] = $e->getMessage();
-        $response["parameters2"] = $rows;
-        $response["timeRequest"] = date("Y-m-d H:i:s");
-
-        echoResponse(400, $response);
-    }
-});
-
-$app->get('/tarjetas-all', function () use ($app) {
     $response = array();
     $dbHandler = new DbHandler();
     $db = $dbHandler->getConnection();
@@ -2139,78 +2113,103 @@ $app->get('/tarjetas-all', function () use ($app) {
 
     $body = $app->request->getBody();
     $data = json_decode($body, true);
-    $rows = null;
 
-    try {
-        $email = $app->request()->params('email');
-        $query = "SELECT * FROM usuario_tarjeta WHERE usuario_id = (SELECT id FROM jhi_user WHERE email = ?)";
-        $sth = $db->prepare($query);
-        $sth->bindParam(1, $email, PDO::PARAM_STR);
-        $sth->execute();
-        $rows = $sth->fetchAll(PDO::FETCH_ASSOC);
-
-        $tarjetas = array();
-        foreach ($rows as $key => $tarjeta) {
-            # code...
-            $tmp = convertKeysToCamelCase($tarjeta);
-            array_push($tarjetas, $tmp);
-        }
-        echoResponse(200, $tarjetas);
-    } catch (Exception $e) {
-
-        $response["status"] = false;
-        $response["description"] = "GENERIC-ERROR";
-        $response["idTransaction"] = time();
-        $response["parameters"] = $e->getMessage();
-        $response["parameters2"] = $rows;
-        $response["timeRequest"] = date("Y-m-d H:i:s");
-
-        echoResponse(400, $response);
-    }
-});
-
-$app->get('/usuario-direcciones', function () use ($app) {
-    $response = array();
-    $dbHandler = new DbHandler();
-    $db = $dbHandler->getConnection();
-    $db->beginTransaction();
-    $rows = null;
     try {
 
         $email = $app->request()->params('email');
 
-        $query = "SELECT * FROM usuario_direccion WHERE usuario_id = (SELECT id FROM jhi_user WHERE email = ?)";
+        $query = "SELECT * FROM carrito_historico WHERE id = ?";
         $sth = $db->prepare($query);
-        $sth->bindParam(1, $email, PDO::PARAM_STR);
+        $sth->bindParam(1, $id, PDO::PARAM_STR);
         $sth->execute();
         $rows = $sth->fetchAll(PDO::FETCH_ASSOC);
-        for ($i = 0; $i < sizeof($rows); $i++) {
-            # code...
-            $rows[$i] = convertKeysToCamelCase($rows[$i]);
+        $carritosHistoricos = array();
+        $tmpHistorico = null;
+        //Carrito histórico armado correctamente completo
+        $carritoHistoricoCompletoDTO = array();
+        $mapProveedores = array();
 
-            if ($rows[$i]["direccionId"]) {
-                $queryDireccion = "SELECT * FROM direccion WHERE id = ?";
-                $sthDireccion = $db->prepare($queryDireccion);
-                $sthDireccion->bindParam(1, $rows[$i]["direccionId"], PDO::PARAM_STR);
-                $sthDireccion->execute();
-                $rowsDireccion = $sth->fetchAll(PDO::FETCH_ASSOC);
+        if (sizeof($rows) > 0) {
+            $tmpHistorico = convertKeysToCamelCase($rows[0]);
 
-                $rows[$i]["direccion"] = convertKeysToCamelCase($rowsDireccion[0]);
+            $queryDetalle = "SELECT * FROM carrito_historico_detalle WHERE carrito_historico_id = ?";
+            $sthDetalle = $db->prepare($queryDetalle);
+            $sthDetalle->bindParam(1, $tmpHistorico["id"], PDO::PARAM_STR);
+            $sthDetalle->execute();
+            $rowsDetalle = $sthDetalle->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($rowsDetalle as $key => $tmp) {
+                $carritoCompraDTO = convertKeysToCamelCase($tmp);
+                $carritoCompraDTO["productoProveedor"] = null;
+                if ($carritoCompraDTO["productoProveedorId"]) {
+                    $carritoCompraDTO["productoProveedor"] = desgloceProductoProveedor($carritoCompraDTO["productoProveedorId"], $db);
+                }
+                //Objeto de detalle armado completamente
+
+                if (!array_key_exists($carritoCompraDTO["productoProveedorId"], $mapProveedores)) {
+                    $carritoProveedor = array();
+                    $carritoProveedor["listCarrito"] = array();
+                    $carritoProveedor["proveedor"] = $carritoCompraDTO["productoProveedor"]["proveedor"];
+                    $carritoProveedor["total"] = 0;
+                    $carritoProveedor["totalProductos"] = 0;
+                    $carritoProveedor["comisionTransporte"] = 0;
+                    $mapProveedores[$carritoCompraDTO["productoProveedorId"]] = $carritoProveedor;
+                }
+                //Si la llave está en el mapa ahora se agregan totales
+                array_push($mapProveedores[$carritoCompraDTO["productoProveedorId"]]["listCarrito"],$carritoCompraDTO);
+                $mapProveedores[$carritoCompraDTO["productoProveedorId"]]["totalProductos"] =
+                floatval($mapProveedores[$carritoCompraDTO["productoProveedorId"]]["totalProductos"]) + floatval($carritoCompraDTO["precio"])
+                *  floatval($carritoCompraDTO["cantidad"]);
+
             }
+            //Salimos del ciclo para asignar totales globales
+            $totalProductos = 0;
+            $totalComisionTransporte = 0;
+            $listCarritoProveedorDTO = array();
+            foreach ($mapProveedores as $key => $carritoDTO) {
+
+                //Aqui sacar comision de transporte por mapa y asignar valor
+                //Nota: solo en caso de que se agregue la dirección del usuario
+                //
+                $mapProveedores[$key]["total"]=floatval($mapProveedores[$key]["totalProductos"]) + 
+                floatval($mapProveedores[$key]["comisionTransporte"]);
+
+                $totalProductos = floatval($totalProductos) + floatval($mapProveedores[$key]["totalProductos"]);
+                $totalComisionTransporte = floatval($totalComisionTransporte) + floatval($mapProveedores[$key]["comisionTransporte"]);
+
+                array_push($listCarritoProveedorDTO, $mapProveedores[$key]);
+            }
+            //Se inhabilita el mapa
+            $total = 0;
+            $totalSinComisionStripe = 0;
+            $comisionStripe = 0;
+
+            $totalSinComisionStripe = floatval($totalSinComisionStripe) + floatval($totalProductos) + floatval($totalComisionTransporte);
+            $comisionStripe = floatval($totalSinComisionStripe) * 0.036 + 3;
+
+            $total = floatval($totalSinComisionStripe) + floatval($comisionStripe);
+
+            //Asignación objeto de retorno
+            $carritoHistoricoCompletoDTO["total"] = floatval($total);
+            $carritoHistoricoCompletoDTO["totalSinComisionStripe"] = floatval($totalSinComisionStripe);
+            $carritoHistoricoCompletoDTO["comisionStripe"] = floatval($comisionStripe);
+            $carritoHistoricoCompletoDTO["totalProductos"] = floatval($totalProductos);
+            $carritoHistoricoCompletoDTO["totalComisionTransporte"] = floatval($totalComisionTransporte);
+            $carritoHistoricoCompletoDTO["listHistoricoProveedores"] = $listCarritoProveedorDTO;
         }
 
-        echoResponse(200, $rows);
+        echoResponse(200, $carritoHistoricoCompletoDTO);
     } catch (Exception $e) {
-
+        $db->rollBack();
         $response["status"] = false;
-        $response["description"] = "GENERIC-ERROR";
+        $response["description"] = $e->getMessage();
         $response["idTransaction"] = time();
         $response["parameters"] = $e->getMessage();
-        $response["parameters2"] = $rows;
         $response["timeRequest"] = date("Y-m-d H:i:s");
 
         echoResponse(400, $response);
     }
+
 });
 
 $app->post('/pedidos', function () use ($app) {
@@ -2240,7 +2239,7 @@ $app->post('/pedidos', function () use ($app) {
         $qUser = "SELECT * FROM jhi_user
                        WHERE email = ?";
         $sthUser = $db->prepare($qUser);
-        $sthUser->bindParam(1, $email, PDO::PARAM_INT);
+        $sthUser->bindParam(1, $email, PDO::PARAM_STR);
         $sthUser->execute();
         $rowsUser = $sthUser->fetchAll(PDO::FETCH_ASSOC);
 
@@ -2635,6 +2634,305 @@ $app->post('/pedidos', function () use ($app) {
 
 });
 
+$app->get('/tipo-direcciones', function () use ($app) {
+    $response = array();
+    $dbHandler = new DbHandler();
+    $db = $dbHandler->getConnection();
+    $db->beginTransaction();
+    $rows = null;
+    try {
+        $query = "SELECT * FROM tipo_direccion";
+        $sth = $db->prepare($query);
+        $sth->execute();
+        $rows = $sth->fetchAll(PDO::FETCH_ASSOC);
+
+        echoResponse(200, $rows);
+    } catch (Exception $e) {
+
+        $response["status"] = false;
+        $response["description"] = "GENERIC-ERROR";
+        $response["idTransaction"] = time();
+        $response["parameters"] = $e->getMessage();
+        $response["parameters2"] = $rows;
+        $response["timeRequest"] = date("Y-m-d H:i:s");
+
+        echoResponse(400, $response);
+    }
+});
+
+$app->get('/tarjetas-all', function () use ($app) {
+    $response = array();
+    $dbHandler = new DbHandler();
+    $db = $dbHandler->getConnection();
+    $db->beginTransaction();
+
+    $body = $app->request->getBody();
+    $data = json_decode($body, true);
+    $rows = null;
+
+    try {
+        $email = $app->request()->params('email');
+        $query = "SELECT * FROM usuario_tarjeta WHERE usuario_id = (SELECT id FROM jhi_user WHERE email = ?)";
+        $sth = $db->prepare($query);
+        $sth->bindParam(1, $email, PDO::PARAM_STR);
+        $sth->execute();
+        $rows = $sth->fetchAll(PDO::FETCH_ASSOC);
+
+        $tarjetas = array();
+        foreach ($rows as $key => $tarjeta) {
+            # code...
+            $tmp = convertKeysToCamelCase($tarjeta);
+            array_push($tarjetas, $tmp);
+        }
+        echoResponse(200, $tarjetas);
+    } catch (Exception $e) {
+
+        $response["status"] = false;
+        $response["description"] = "GENERIC-ERROR";
+        $response["idTransaction"] = time();
+        $response["parameters"] = $e->getMessage();
+        $response["parameters2"] = $rows;
+        $response["timeRequest"] = date("Y-m-d H:i:s");
+
+        echoResponse(400, $response);
+    }
+});
+
+$app->get('/usuario-direcciones', function () use ($app) {
+    $response = array();
+    $dbHandler = new DbHandler();
+    $db = $dbHandler->getConnection();
+    $db->beginTransaction();
+    $rows = null;
+    try {
+
+        $email = $app->request()->params('email');
+
+        $query = "SELECT * FROM usuario_direccion WHERE usuario_id = (SELECT id FROM jhi_user WHERE email = ?)";
+        $sth = $db->prepare($query);
+        $sth->bindParam(1, $email, PDO::PARAM_STR);
+        $sth->execute();
+        $rows = $sth->fetchAll(PDO::FETCH_ASSOC);
+        for ($i = 0; $i < sizeof($rows); $i++) {
+            # code...
+            $rows[$i] = convertKeysToCamelCase($rows[$i]);
+
+            if ($rows[$i]["direccionId"]) {
+                $queryDireccion = "SELECT * FROM direccion WHERE id = ?";
+                $sthDireccion = $db->prepare($queryDireccion);
+                $sthDireccion->bindParam(1, $rows[$i]["direccionId"], PDO::PARAM_STR);
+                $sthDireccion->execute();
+                $rowsDireccion = $sthDireccion->fetchAll(PDO::FETCH_ASSOC);
+
+                $rows[$i]["direccion"] = convertKeysToCamelCase($rowsDireccion[0]);
+            }
+        }
+
+        echoResponse(200, $rows);
+    } catch (Exception $e) {
+
+        $response["status"] = false;
+        $response["description"] = "GENERIC-ERROR";
+        $response["idTransaction"] = time();
+        $response["parameters"] = $e->getMessage();
+        $response["parameters2"] = $rows;
+        $response["timeRequest"] = date("Y-m-d H:i:s");
+
+        echoResponse(400, $response);
+    }
+});
+
+$app->delete('/usuario-direcciones/:id', function ($id) use ($app) {
+
+    $response = array();
+    $dbHandler = new DbHandler();
+    $db = $dbHandler->getConnection();
+
+    $body = $app->request->getBody();
+    $data = json_decode($body, true);
+    $db->beginTransaction();
+    try {
+        //inventario, producto_proveedor, producto
+
+        $query = "SELECT * FROM usuario_direccion 
+        WHERE id = ?";
+        $sth = $db->prepare($query);
+        $sth->bindParam(1, $id, PDO::PARAM_INT);
+        $sth->execute();
+        $rows = $sth->fetchAll(PDO::FETCH_ASSOC);
+
+        $s1 = "DELETE FROM usuario_direccion WHERE id = ?";
+
+        $sth1 = $db->prepare($s1);
+        $sth1->bindParam(1, $id, PDO::PARAM_INT);
+        $sth1->execute();
+
+        $s2 = "DELETE FROM direccion WHERE id = ?";
+
+        $sth2 = $db->prepare($s2);
+        $sth2->bindParam(1, $rows[0]["direccion_id"], PDO::PARAM_INT);
+        $sth2->execute();
+
+        $db->commit();
+
+        $response["status"] = false;
+        $response["description"] = "SUCCESSFUL";
+        $response["idTransaction"] = time();
+        $response["parameters"] = [];
+        $response["timeRequest"] = date("Y-m-d H:i:s");
+
+        echoResponse(200, $response);
+    } catch (Exception $e) {
+        $db->rollBack();
+        $response["status"] = false;
+        $response["description"] = $e->getMessage();
+        $response["idTransaction"] = time();
+        $response["parameters"] = $e->getMessage();
+        $response["timeRequest"] = date("Y-m-d H:i:s");
+
+        echoResponse(400, $response);
+    }
+
+});
+
+$app->get('/usuario-direcciones/:id', function ($id) use ($app) {
+
+    $response = array();
+    $dbHandler = new DbHandler();
+    $db = $dbHandler->getConnection();
+
+    $body = $app->request->getBody();
+    $data = json_decode($body, true);
+    $db->beginTransaction();
+    try {
+        //inventario, producto_proveedor, producto
+        $s1 = "SELECT * FROM usuario_direccion WHERE id = ?";
+
+        $sth1 = $db->prepare($s1);
+        $sth1->bindParam(1, $id, PDO::PARAM_INT);
+        $sth1->execute();
+        $rows = $sthParams->fetchAll(PDO::FETCH_ASSOC);
+
+        echoResponse(200, $rows);
+    } catch (Exception $e) {
+        $db->rollBack();
+        $response["status"] = false;
+        $response["description"] = $e->getMessage();
+        $response["idTransaction"] = time();
+        $response["parameters"] = $e->getMessage();
+        $response["timeRequest"] = date("Y-m-d H:i:s");
+
+        echoResponse(400, $response);
+    }
+
+});
+
+$app->post('/usuario-direcciones', function () use ($app) {
+
+    $response = array();
+    $dbHandler = new DbHandler();
+    $db = $dbHandler->getConnection();
+
+    $body = $app->request->getBody();
+    $data = json_decode($body, true);
+    $db->beginTransaction();
+    try {
+        //inventario, producto_proveedor, producto
+        $direccion = $data['direccion'];
+        $alias = $data['alias'];
+        $tipoDireccionId = $data['tipodireccionId'];
+        $email = $data['email'];
+
+        $qInsertDireccion = "INSERT INTO direccion (direccion, codigo_postal, latitud, longitud, usuario_alta_id, fecha_alta) 
+        VALUES (?, ?, ?, ?, (SELECT id FROM jhi_user WHERE email = ?), now())";
+        $sthInsertDireccion = $db->prepare($qInsertDireccion);
+        $sthInsertDireccion->bindParam(1, $direccion["direccion"], PDO::PARAM_STR);
+        $sthInsertDireccion->bindParam(2, $direccion["codigoPostal"], PDO::PARAM_INT);
+        $sthInsertDireccion->bindParam(3, $direccion["latitud"], PDO::PARAM_STR);
+        $sthInsertDireccion->bindParam(4, $direccion["longitud"], PDO::PARAM_STR);
+        $sthInsertDireccion->bindParam(5, $email, PDO::PARAM_STR);
+        $sthInsertDireccion->execute();
+        $idDireccionTmp = $db->lastInsertId();
+
+        $qInsertUsuarioDireccion = "INSERT INTO usuario_direccion (usuario_id, direccion_id, alias, tipo_direccion_id, fecha_alta, usuario_alta_id) 
+        VALUES ((SELECT id FROM jhi_user WHERE email = ?), ?, ?, ?, now(), (SELECT id FROM jhi_user WHERE email = ?))";
+        $sthInsertUsuarioDireccion = $db->prepare($qInsertUsuarioDireccion);
+        $sthInsertUsuarioDireccion->bindParam(1, $email, PDO::PARAM_STR);
+        $sthInsertUsuarioDireccion->bindParam(2, $idDireccionTmp, PDO::PARAM_INT);
+        $sthInsertUsuarioDireccion->bindParam(3, $alias, PDO::PARAM_STR);
+        $sthInsertUsuarioDireccion->bindParam(4, $tipoDireccionId, PDO::PARAM_INT);
+        $sthInsertUsuarioDireccion->bindParam(5, $email, PDO::PARAM_STR);
+        $sthInsertUsuarioDireccion->execute();
+        $idUsuarioDireccionTmp = $db->lastInsertId();
+
+        $retorno = array();
+        $retorno["id"] = $idUsuarioDireccionTmp;
+        $retorno["idDireccion"] = $idDireccionTmp;
+        $db->commit();
+        echoResponse(200, $retorno);
+    } catch (Exception $e) {
+        $db->rollBack();
+        $response["status"] = false;
+        $response["description"] = $e->getMessage();
+        $response["idTransaction"] = time();
+        $response["parameters"] = $e->getMessage();
+        $response["timeRequest"] = date("Y-m-d H:i:s");
+
+        echoResponse(400, $response);
+    }
+
+});
+
+$app->put('/usuario-direcciones', function () use ($app) {
+
+    $response = array();
+    $dbHandler = new DbHandler();
+    $db = $dbHandler->getConnection();
+
+    $body = $app->request->getBody();
+    $data = json_decode($body, true);
+    $db->beginTransaction();
+    try {
+        //inventario, producto_proveedor, producto
+        $direccion = $data['direccion'];
+        $alias = $data['alias'];
+        $tipoDireccionId = $data['tipoDireccionId'];
+        $email = $data['email'];
+        $direccionId = $data['direccionId'];
+        $id = $data['id'];
+
+        $qInsertDireccion = "UPDATE direccion SET direccion = ?, codigo_postal = ?, 
+        latitud = ?, longitud = ? WHERE (id = ?)";
+        $sthInsertDireccion = $db->prepare($qInsertDireccion);
+        $sthInsertDireccion->bindParam(1, $direccion["direccion"], PDO::PARAM_STR);
+        $sthInsertDireccion->bindParam(2, $direccion["codigoPostal"], PDO::PARAM_INT);
+        $sthInsertDireccion->bindParam(3, $direccion["latitud"], PDO::PARAM_STR);
+        $sthInsertDireccion->bindParam(4, $direccion["longitud"], PDO::PARAM_STR);
+        $sthInsertDireccion->bindParam(5, $direccionId, PDO::PARAM_INT);
+        $sthInsertDireccion->execute();
+
+        $qInsertUsuarioDireccion = "UPDATE usuario_direccion SET alias = ?, tipo_direccion_id = ? WHERE (id = ?)";
+        $sthInsertUsuarioDireccion = $db->prepare($qInsertUsuarioDireccion);
+        $sthInsertUsuarioDireccion->bindParam(1, $alias, PDO::PARAM_STR);
+        $sthInsertUsuarioDireccion->bindParam(2, $tipoDireccionId, PDO::PARAM_INT);
+        $sthInsertUsuarioDireccion->bindParam(3, $id, PDO::PARAM_INT);
+        $sthInsertUsuarioDireccion->execute();
+
+        $db->commit();
+        echoResponse(200, true);
+    } catch (Exception $e) {
+        $db->rollBack();
+        $response["status"] = false;
+        $response["description"] = $e->getMessage();
+        $response["idTransaction"] = time();
+        $response["parameters"] = $e->getMessage();
+        $response["timeRequest"] = date("Y-m-d H:i:s");
+
+        echoResponse(400, $response);
+    }
+
+});
+
 $app->get('/pedidos', function () use ($app) {
 
     $response = array();
@@ -2669,6 +2967,8 @@ $app->get('/pedidos', function () use ($app) {
             if ($rows[$i]["id"]) {
                 $rows[$i] = desglocePedido($rows[$i]["id"], $db);
             }
+
+            $rows[$i]["pedidoProveedores"] = desglocePedidoProveedores($rows[$i]["id"], $db);
         }
 
         echoResponse(200, $rows);
@@ -3662,7 +3962,7 @@ function desgloceProductoProveedorByProductoList($id, $db)
     return $arrayProductoProveedor;
 }
 
-function desglocePedido($id, $db)
+function desglocePedido($id, $db, $desgloceFinito = true)
 {
 
     $queryPedido = "SELECT * FROM pedido WHERE id = ?";
@@ -3682,8 +3982,11 @@ function desglocePedido($id, $db)
         if ($rowsPedidos[0]["estatusId"]) {
             $rowsPedidos[0]["estatus"] = desgloceEstatus($rowsPedidos[0]["estatusId"], $db);
         }
-
-        //$rowsPedidos[0]["pedidoProveedores"] = desglocePedidoProveedores($rowsPedidos[0]["id"]);
+        
+        if($desgloceFinito){
+            $rowsPedidos[0]["pedidoProveedores"] = desglocePedidoProveedores($rowsPedidos[0]["id"], $db);
+        }
+        
     }
     return $rowsPedidos[0];
 }
@@ -3709,7 +4012,7 @@ function desglocePedidoWithProveedores($id, $db)
             $rowsPedidos[0]["estatus"] = desgloceEstatus($rowsPedidos[0]["estatusId"], $db);
         }
 
-        //$rowsPedidos[0]["pedidoProveedores"] = desglocePedidoProveedores($rowsPedidos[0]["id"]);
+        $rowsPedidos[0]["pedidoProveedores"] = desglocePedidoProveedores($rowsPedidos[0]["id"]);
 
         $queryProductos = "SELECT * FROM pedido_proveedor WHERE pedido_id = ?";
         $sthProductos = $db->prepare($queryProductos);
@@ -3804,7 +4107,7 @@ function desglocePedidoProveedores($idPedido, $db)
             }
 
             if ($rowsProductos[$i]["pedidoId"]) {
-                $rowsProductos[$i]["pedido"] = desglocePedido($rowsProductos[$i]["pedidoId"], $db);
+                $rowsProductos[$i]["pedido"] = desglocePedido($rowsProductos[$i]["pedidoId"], $db, false);
             }
         }
     }
